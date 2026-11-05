@@ -114,7 +114,7 @@ source ~/controller_ws/install/setup.bash
 Run the controller:
 
 ```bash
-ros2 run technocrats_controller controller
+ros2 run technocrats_controller controller --ros-args -p max_speed:=4.0
 ```
 
 ## 8. ROS 2 Topics
