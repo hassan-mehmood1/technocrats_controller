@@ -3,7 +3,6 @@
 import os
 import csv
 import math
-import statistics
 
 import rclpy
 from rclpy.node import Node
@@ -18,137 +17,167 @@ class TechnocratsController(Node):
     def __init__(self):
         super().__init__('technocrats_controller')
 
+        # =====================================================
+        # PARAMETERS
+        # =====================================================
+
         self.declare_parameter(
-            'waypoint_file',
-            '~/controller_ws/src/technocrats_controller/maps/levine_centerline.csv'
+            'first_lap_file',
+            '~/controller_ws/src/technocrats_controller/maps/second_lap.csv'
+        )
+
+        self.declare_parameter(
+            'other_lap_file',
+            '~/controller_ws/src/technocrats_controller/maps/third_lap.csv'
         )
 
         self.declare_parameter('wheelbase', 0.33)
 
-        self.declare_parameter('cie_controller_gain', 1.0)
-        self.declare_parameter('cie_controller_softening', 0.5)
+        # cie controller
+        self.declare_parameter('cie_gain', 1.0)
+        self.declare_parameter('cie_softening', 0.5)
 
-        self.declare_parameter('sensor1_centering_gain', 1.0)
-        self.declare_parameter('sensor1_centering_softening', 0.5)
-
-        self.declare_parameter('sensor1_sector_min_angle', 55.0)
-        self.declare_parameter('sensor1_sector_max_angle', 125.0)
-
-        self.declare_parameter('min_sensor1_range', 0.10)
-        self.declare_parameter('max_sensor1_range', 4.0)
-
-        self.declare_parameter('min_wall_points', 5)
-        self.declare_parameter('max_wall_spread', 0.20)
-
-        self.declare_parameter('sensor1_timeout', 0.5)
-
-        self.declare_parameter('front_sector_angle', 12.0)
-        self.declare_parameter('front_slow_distance', 1.5)
-        self.declare_parameter('front_stop_distance', 0.45)
-
+        # Vehicle constraints
         self.declare_parameter(
             'max_steering_angle',
             math.radians(24.0)
         )
 
+        # Speed control
         self.declare_parameter('max_speed', 1.0)
         self.declare_parameter('min_speed', 0.7)
         self.declare_parameter('curvature_speed_gain', 1.5)
 
+        # Waypoint search
         self.declare_parameter('search_forward', 80)
         self.declare_parameter('search_backward', 5)
 
+        # Lap detection
+        self.declare_parameter('lap_wrap_high_fraction', 0.80)
+        self.declare_parameter('lap_wrap_low_fraction', 0.20)
+
+        # =====================================================
+        # sensor1 PARAMETERS
+        # =====================================================
+
+        self.declare_parameter('sensor1_topic', '/scan')
+
+        self.declare_parameter('avoidance_distance', 0.22)
+
+        self.declare_parameter(
+            'avoidance_steering_angle',
+            math.radians(20.0)
+        )
+
+        self.declare_parameter('avoidance_speed', 0.45)
+
+        self.declare_parameter('side_sector_start', 8.0)
+        self.declare_parameter('side_sector_end', 60.0)
+
+        self.declare_parameter('sensor1_timeout', 0.5)
+
+        # =====================================================
+        # LOAD PARAMETERS
+        # =====================================================
+
         self.wheelbase = self.get_parameter('wheelbase').value
 
-        self.cie_controller_gain = (
-            self.get_parameter('cie_controller_gain').value
-        )
+        self.cie_gain = self.get_parameter('cie_gain').value
+        self.cie_softening = self.get_parameter(
+            'cie_softening'
+        ).value
 
-        self.cie_controller_softening = (
-            self.get_parameter('cie_controller_softening').value
-        )
-
-        self.sensor1_centering_gain = (
-            self.get_parameter('sensor1_centering_gain').value
-        )
-
-        self.sensor1_centering_softening = (
-            self.get_parameter('sensor1_centering_softening').value
-        )
-
-        self.sensor1_sector_min_angle = (
-            self.get_parameter('sensor1_sector_min_angle').value
-        )
-
-        self.sensor1_sector_max_angle = (
-            self.get_parameter('sensor1_sector_max_angle').value
-        )
-
-        self.min_sensor1_range = (
-            self.get_parameter('min_sensor1_range').value
-        )
-
-        self.max_sensor1_range = (
-            self.get_parameter('max_sensor1_range').value
-        )
-
-        self.min_wall_points = (
-            self.get_parameter('min_wall_points').value
-        )
-
-        self.max_wall_spread = (
-            self.get_parameter('max_wall_spread').value
-        )
-
-        self.sensor1_timeout = (
-            self.get_parameter('sensor1_timeout').value
-        )
-
-        self.front_sector_angle = (
-            self.get_parameter('front_sector_angle').value
-        )
-
-        self.front_slow_distance = (
-            self.get_parameter('front_slow_distance').value
-        )
-
-        self.front_stop_distance = (
-            self.get_parameter('front_stop_distance').value
-        )
-
-        self.max_steering_angle = (
-            self.get_parameter('max_steering_angle').value
-        )
+        self.max_steering_angle = self.get_parameter(
+            'max_steering_angle'
+        ).value
 
         self.max_speed = self.get_parameter('max_speed').value
         self.min_speed = self.get_parameter('min_speed').value
 
-        self.curvature_speed_gain = (
-            self.get_parameter('curvature_speed_gain').value
+        self.curvature_speed_gain = self.get_parameter(
+            'curvature_speed_gain'
+        ).value
+
+        self.search_forward = self.get_parameter(
+            'search_forward'
+        ).value
+
+        self.search_backward = self.get_parameter(
+            'search_backward'
+        ).value
+        
+        self.lap_wrap_high_fraction = self.get_parameter(
+            'lap_wrap_high_fraction'
+        ).value
+
+        self.lap_wrap_low_fraction = self.get_parameter(
+            'lap_wrap_low_fraction'
+        ).value
+
+        # sensor1 parameters
+        self.avoidance_distance = self.get_parameter(
+            'avoidance_distance'
+        ).value
+
+        self.avoidance_steering_angle = self.get_parameter(
+            'avoidance_steering_angle'
+        ).value
+
+        self.avoidance_speed = self.get_parameter(
+            'avoidance_speed'
+        ).value
+
+        self.side_sector_start = self.get_parameter(
+            'side_sector_start'
+        ).value
+
+        self.side_sector_end = self.get_parameter(
+            'side_sector_end'
+        ).value
+
+        self.sensor1_timeout = self.get_parameter(
+            'sensor1_timeout'
+        ).value
+
+        sensor1_topic = self.get_parameter('sensor1_topic').value
+
+        # =====================================================
+        # LAP MANAGEMENT
+        # =====================================================
+
+        self.first_lap_file = os.path.expanduser(
+            self.get_parameter('first_lap_file').value
         )
 
-        self.search_forward = (
-            self.get_parameter('search_forward').value
+        self.other_lap_file = os.path.expanduser(
+            self.get_parameter('other_lap_file').value
         )
 
-        self.search_backward = (
-            self.get_parameter('search_backward').value
-        )
+        self.current_lap = 1
 
-        waypoint_file = os.path.expanduser(
-            self.get_parameter('waypoint_file').value
-        )
+        # The first path is loaded at startup.
+        self.active_waypoint_file = self.first_lap_file
 
         self.waypoints = []
         self.track_widths = []
 
-        self.load_waypoints(waypoint_file)
+        self.previous_index = None
+        self.last_progress_index = None
+
+        self.load_waypoints(self.active_waypoint_file)
 
         self.num_waypoints = len(self.waypoints)
-        self.previous_index = None
+
+        # =====================================================
+        # sensor1 DATA
+        # =====================================================
 
         self.latest_scan = None
         self.last_scan_time = None
+
+        # =====================================================
+        # ROS 2 INTERFACES
+        # =====================================================
 
         self.odom_sub = self.create_subscription(
             Odometry,
@@ -159,7 +188,7 @@ class TechnocratsController(Node):
 
         self.scan_sub = self.create_subscription(
             LaserScan,
-            '/scan',
+            sensor1_topic,
             self.scan_callback,
             10
         )
@@ -170,13 +199,57 @@ class TechnocratsController(Node):
             10
         )
 
+        # =====================================================
+        # STARTUP INFORMATION
+        # =====================================================
+
+        self.get_logger().info('========================================')
+        self.get_logger().info('TECHNOCRATS cie + SIDE sensor1')
+        self.get_logger().info('AUTOMATIC LAP-BASED MAP SWITCHING')
+        self.get_logger().info('========================================')
+
         self.get_logger().info(
-            'TECHNOCRATS CONTROLLER STARTED'
+            f'First lap map: {self.first_lap_file}'
         )
 
         self.get_logger().info(
-            f'Loaded {self.num_waypoints} centreline waypoints'
+            f'Other laps map: {self.other_lap_file}'
         )
+
+        self.get_logger().info(
+            f'Active map: {self.active_waypoint_file}'
+        )
+
+        self.get_logger().info(
+            f'Waypoints: {self.num_waypoints}'
+        )
+
+        self.get_logger().info(
+            f'Avoidance distance: {self.avoidance_distance} m'
+        )
+
+        self.get_logger().info(
+            f'Avoidance steering: '
+            f'{math.degrees(self.avoidance_steering_angle):.1f} deg'
+        )
+
+        self.get_logger().info(
+            f'Avoidance speed: {self.avoidance_speed} m/s'
+        )
+
+        self.get_logger().info(
+            'Front obstacle detection: DISABLED'
+        )
+
+        self.get_logger().info(
+            'Starting on LAP 1'
+        )
+
+        self.get_logger().info('========================================')
+
+    # =========================================================
+    # LOAD WAYPOINTS
+    # =========================================================
 
     def load_waypoints(self, filename):
 
@@ -185,9 +258,14 @@ class TechnocratsController(Node):
                 f'Waypoint file not found: {filename}'
             )
 
+        new_waypoints = []
+        new_track_widths = []
+
         with open(filename, 'r') as file:
 
-            for row in csv.reader(file):
+            reader = csv.reader(file)
+
+            for row in reader:
 
                 if not row:
                     continue
@@ -196,25 +274,178 @@ class TechnocratsController(Node):
                     continue
 
                 try:
+
                     x = float(row[0])
                     y = float(row[1])
 
                     right_width = float(row[2])
                     left_width = float(row[3])
 
-                    self.waypoints.append((x, y))
+                    if not all(map(math.isfinite, [
+                        x,
+                        y,
+                        right_width,
+                        left_width
+                    ])):
+                        continue
 
-                    self.track_widths.append(
+                    new_waypoints.append((x, y))
+
+                    new_track_widths.append(
                         (right_width, left_width)
                     )
 
                 except (ValueError, IndexError):
                     continue
 
-        if len(self.waypoints) < 3:
+        if len(new_waypoints) < 3:
             raise RuntimeError(
-                'Not enough valid waypoints in CSV file.'
+                f'Not enough valid waypoints in {filename}'
             )
+
+        # Replace active path only after successful loading.
+        self.waypoints = new_waypoints
+        self.track_widths = new_track_widths
+
+        self.num_waypoints = len(self.waypoints)
+
+        self.previous_index = None
+        self.last_progress_index = None
+
+        self.get_logger().info(
+            f'Loaded {self.num_waypoints} waypoints from {filename}'
+        )
+
+    # =========================================================
+    # SWITCH TO OTHER LAP MAP
+    # =========================================================
+
+    def switch_to_other_lap_map(self, x, y, yaw):
+
+        if self.current_lap >= 2:
+            return
+
+        self.get_logger().warn(
+            '========================================'
+        )
+
+        self.get_logger().warn(
+            'FIRST LAP COMPLETED!'
+        )
+
+        self.get_logger().warn(
+            'Switching to OTHER_LAP.csv'
+        )
+
+        # Change active lap.
+        self.current_lap = 2
+
+        self.active_waypoint_file = self.other_lap_file
+
+        # Load the new path.
+        self.load_waypoints(self.active_waypoint_file)
+
+        # Find the closest waypoint on the new path.
+        front_x = (
+            x + self.wheelbase * math.cos(yaw)
+        )
+
+        front_y = (
+            y + self.wheelbase * math.sin(yaw)
+        )
+
+        best_index = 0
+        best_distance = float('inf')
+
+        for i, waypoint in enumerate(self.waypoints):
+
+            dx = waypoint[0] - front_x
+            dy = waypoint[1] - front_y
+
+            distance = dx * dx + dy * dy
+
+            if distance < best_distance:
+
+                best_distance = distance
+                best_index = i
+
+        self.previous_index = best_index
+
+        self.last_progress_index = best_index
+
+        self.get_logger().warn(
+            f'NOW USING OTHER_LAP.csv | '
+            f'Waypoints: {self.num_waypoints} | '
+            f'Closest waypoint: {best_index}'
+        )
+
+        self.get_logger().warn(
+            'All remaining laps will use OTHER_LAP.csv'
+        )
+
+        self.get_logger().warn(
+            '========================================'
+        )
+
+    # =========================================================
+    # LAP COMPLETION DETECTION
+    # =========================================================
+
+    def check_lap_completion(self, closest_index, x, y, yaw):
+
+        if self.last_progress_index is None:
+
+            self.last_progress_index = closest_index
+            return
+
+        high_threshold = int(
+            self.lap_wrap_high_fraction * self.num_waypoints
+        )
+
+        low_threshold = int(
+            self.lap_wrap_low_fraction * self.num_waypoints
+        )
+
+        previous_index = self.last_progress_index
+
+        # Detect progress wrapping from the end of the path
+        # back to its beginning.
+        lap_completed = (
+            previous_index >= high_threshold
+            and closest_index <= low_threshold
+        )
+
+        if lap_completed:
+
+            self.get_logger().info(
+                f'Lap boundary detected: '
+                f'{previous_index} -> {closest_index}'
+            )
+
+            if self.current_lap == 1:
+
+                self.switch_to_other_lap_map(
+                    x,
+                    y,
+                    yaw
+                )
+
+                return
+
+            else:
+
+                self.current_lap += 1
+
+                self.get_logger().info(
+                    f'Lap {self.current_lap} started | '
+                    f'Using OTHER_LAP.csv'
+                )
+
+        self.last_progress_index = closest_index
+
+    # =========================================================
+    # ANGLE NORMALIZATION
+    # =========================================================
 
     @staticmethod
     def normalize_angle(angle):
@@ -224,6 +455,10 @@ class TechnocratsController(Node):
             math.cos(angle)
         )
 
+    # =========================================================
+    # GET VEHICLE YAW
+    # =========================================================
+
     def get_yaw(self, orientation):
 
         x = orientation.x
@@ -232,9 +467,17 @@ class TechnocratsController(Node):
         w = orientation.w
 
         sin_yaw = 2.0 * (w * z + x * y)
-        cos_yaw = 1.0 - 2.0 * (y * y + z * z)
+
+        cos_yaw = (
+            1.0 -
+            2.0 * (y * y + z * z)
+        )
 
         return math.atan2(sin_yaw, cos_yaw)
+
+    # =========================================================
+    # FIND CLOSEST WAYPOINT
+    # =========================================================
 
     def find_closest_waypoint(self, x, y):
 
@@ -251,10 +494,12 @@ class TechnocratsController(Node):
                 distance = dx * dx + dy * dy
 
                 if distance < best_distance:
+
                     best_distance = distance
                     best_index = i
 
             self.previous_index = best_index
+
             return best_index
 
         best_index = self.previous_index
@@ -277,6 +522,7 @@ class TechnocratsController(Node):
             distance = dx * dx + dy * dy
 
             if distance < best_distance:
+
                 best_distance = distance
                 best_index = index
 
@@ -284,13 +530,25 @@ class TechnocratsController(Node):
 
         return best_index
 
+    # =========================================================
+    # PURE cie CONTROLLER
+    # =========================================================
+
     def cie_controller(self, x, y, yaw, velocity):
 
-        front_x = x + self.wheelbase * math.cos(yaw)
-        front_y = y + self.wheelbase * math.sin(yaw)
+        front_x = (
+            x +
+            self.wheelbase * math.cos(yaw)
+        )
+
+        front_y = (
+            y +
+            self.wheelbase * math.sin(yaw)
+        )
 
         closest_index = self.find_closest_waypoint(
-            front_x, front_y
+            front_x,
+            front_y
         )
 
         next_index = (
@@ -317,13 +575,13 @@ class TechnocratsController(Node):
             (front_x - current_wp[0])
         )
 
-        speed_for_control = max(
-            abs(velocity),
-            self.cie_controller_softening
+        speed_for_control = (
+            abs(velocity) +
+            self.cie_softening
         )
 
         cross_track_correction = math.atan2(
-            self.cie_controller_gain * cte,
+            self.cie_gain * cte,
             speed_for_control
         )
 
@@ -334,11 +592,15 @@ class TechnocratsController(Node):
 
         steering = max(
             -self.max_steering_angle,
-            min(self.max_steering_angle, steering)
+            min(
+                self.max_steering_angle,
+                steering
+            )
         )
 
         curvature = (
-            math.tan(steering) / self.wheelbase
+            math.tan(steering) /
+            self.wheelbase
         )
 
         return (
@@ -346,8 +608,13 @@ class TechnocratsController(Node):
             curvature,
             cte,
             heading_error,
+            cross_track_correction,
             closest_index
         )
+
+    # =========================================================
+    # sensor1 CALLBACK
+    # =========================================================
 
     def scan_callback(self, msg):
 
@@ -357,232 +624,129 @@ class TechnocratsController(Node):
             self.get_clock().now().nanoseconds / 1e9
         )
 
-    def get_sensor1_points(self):
+    # =========================================================
+    # GET MINIMUM DISTANCE IN SECTOR
+    # =========================================================
+
+    def get_sector_minimum(self, scan, angle_start, angle_end):
+
+        minimum_distance = float('inf')
+
+        for i, distance in enumerate(scan.ranges):
+
+            angle = (
+                scan.angle_min +
+                i * scan.angle_increment
+            )
+
+            angle_deg = math.degrees(angle)
+
+            if not (
+                angle_start <= angle_deg <= angle_end
+            ):
+                continue
+
+            if not math.isfinite(distance):
+                continue
+
+            if distance < scan.range_min:
+                continue
+
+            if distance > scan.range_max:
+                continue
+
+            minimum_distance = min(
+                minimum_distance,
+                distance
+            )
+
+        return minimum_distance
+
+    # =========================================================
+    # sensor1 SIDE-OBSTACLE AVOIDANCE
+    # =========================================================
+
+    def sensor1_avoidance(self):
 
         if self.latest_scan is None:
-            return None
+            return False, 0.0, 0.0, 'NO sensor1 DATA'
 
         current_time = (
             self.get_clock().now().nanoseconds / 1e9
         )
 
-        if self.last_scan_time is None:
-            return None
-
         scan_age = current_time - self.last_scan_time
 
         if scan_age > self.sensor1_timeout:
-            return None
+            return False, 0.0, 0.0, 'STALE sensor1'
 
         scan = self.latest_scan
-        points = []
 
-        angle = scan.angle_min
-
-        for distance in scan.ranges:
-
-            if (
-                math.isfinite(distance)
-                and self.min_sensor1_range < distance < self.max_sensor1_range
-            ):
-
-                px = distance * math.cos(angle)
-                py = distance * math.sin(angle)
-
-                points.append((px, py, angle, distance))
-
-            angle += scan.angle_increment
-
-        return points
-
-    def estimate_wall_distance(self, points, side):
-
-        min_angle = math.radians(
-            self.sensor1_sector_min_angle
+        # Left sector: positive angles
+        left_min = self.get_sector_minimum(
+            scan,
+            self.side_sector_start,
+            self.side_sector_end
         )
 
-        max_angle = math.radians(
-            self.sensor1_sector_max_angle
+        # Right sector: negative angles
+        right_min = self.get_sector_minimum(
+            scan,
+            -self.side_sector_end,
+            -self.side_sector_start
         )
 
-        lateral_distances = []
-
-        for px, py, angle, distance in points:
-
-            if side == 'left':
-
-                if not (min_angle <= angle <= max_angle):
-                    continue
-
-                if py <= 0.0:
-                    continue
-
-                lateral_distances.append(py)
-
-            else:
-
-                if not (-max_angle <= angle <= -min_angle):
-                    continue
-
-                if py >= 0.0:
-                    continue
-
-                lateral_distances.append(abs(py))
-
-        if len(lateral_distances) < self.min_wall_points:
-            return None
-
-        wall_distance = statistics.median(
-            lateral_distances
+        left_blocked = (
+            left_min < self.avoidance_distance
         )
 
-        deviations = [
-            abs(value - wall_distance)
-            for value in lateral_distances
-        ]
-
-        spread = statistics.median(deviations)
-
-        if spread > self.max_wall_spread:
-            return None
-
-        return wall_distance
-
-    def estimate_both_walls(self):
-
-        points = self.get_sensor1_points()
-
-        if points is None:
-            return None, None
-
-        left_distance = self.estimate_wall_distance(
-            points, 'left'
+        right_blocked = (
+            right_min < self.avoidance_distance
         )
 
-        right_distance = self.estimate_wall_distance(
-            points, 'right'
+        # Both sides blocked: use cie
+        if left_blocked and right_blocked:
+
+            return (
+                False,
+                0.0,
+                0.0,
+                'BOTH SIDES BLOCKED - cie'
+            )
+
+        # Obstacle on left: steer right
+        if left_blocked:
+
+            return (
+                True,
+                -self.avoidance_steering_angle,
+                self.avoidance_speed,
+                f'OBSTACLE LEFT ({left_min:.2f} m) - AVOID RIGHT'
+            )
+
+        # Obstacle on right: steer left
+        if right_blocked:
+
+            return (
+                True,
+                self.avoidance_steering_angle,
+                self.avoidance_speed,
+                f'OBSTACLE RIGHT ({right_min:.2f} m) - AVOID LEFT'
+            )
+
+        # No side obstacle
+        return (
+            False,
+            0.0,
+            0.0,
+            'SIDES CLEAR - cie'
         )
 
-        return left_distance, right_distance
+    # =========================================================
+    # SPEED CONTROL
+    # =========================================================
 
-    def sensor1_centering_correction(self, velocity):
-
-        left_distance, right_distance = (
-            self.estimate_both_walls()
-        )
-
-        if left_distance is None or right_distance is None:
-
-            return {
-                'correction': 0.0,
-                'center_error': None,
-                'left_distance': left_distance,
-                'right_distance': right_distance,
-                'centering_active': False
-            }
-
-        center_error = (
-            left_distance - right_distance
-        ) / 2.0
-
-        speed_for_control = max(
-            abs(velocity),
-            self.sensor1_centering_softening
-        )
-
-        correction = math.atan2(
-            self.sensor1_centering_gain * center_error,
-            speed_for_control
-        )
-
-        return {
-            'correction': correction,
-            'center_error': center_error,
-            'left_distance': left_distance,
-            'right_distance': right_distance,
-            'centering_active': True
-        }
-
-    def get_front_obstacle_distance(self):
-
-        points = self.get_sensor1_points()
-
-        if points is None:
-            return None
-
-        front_angle = math.radians(
-            self.front_sector_angle
-        )
-
-        front_distances = []
-
-        for px, py, angle, distance in points:
-
-            if abs(angle) <= front_angle and px > 0.0:
-                front_distances.append(px)
-
-        if not front_distances:
-            return None
-
-        front_distances.sort()
-
-        index = max(
-            0,
-            int(0.10 * (len(front_distances) - 1))
-        )
-
-        return front_distances[index]
-
-    def sensor1_cie_controller(self, x, y, yaw, velocity):
-
-        (
-            waypoint_steering,
-            waypoint_curvature,
-            cte,
-            heading_error,
-            closest_index
-        ) = self.cie_controller(
-            x, y, yaw, velocity
-        )
-
-        sensor1_data = self.sensor1_centering_correction(
-            velocity
-        )
-
-        sensor1_correction = sensor1_data['correction']
-
-        steering = (
-            waypoint_steering +
-            sensor1_correction
-        )
-
-        steering = max(
-            -self.max_steering_angle,
-            min(self.max_steering_angle, steering)
-        )
-
-        curvature = (
-            math.tan(steering) / self.wheelbase
-        )
-
-        front_distance = self.get_front_obstacle_distance()
-
-        diagnostics = {
-            'closest_index': closest_index,
-            'cte': cte,
-            'heading_error': heading_error,
-            'waypoint_steering': waypoint_steering,
-            'sensor1_correction': sensor1_correction,
-            'center_error': sensor1_data['center_error'],
-            'left_distance': sensor1_data['left_distance'],
-            'right_distance': sensor1_data['right_distance'],
-            'centering_active': sensor1_data['centering_active'],
-            'front_distance': front_distance
-        }
-
-        return steering, curvature, diagnostics
-
-    def calculate_speed(self, curvature, front_distance=None):
+    def calculate_speed(self, curvature):
 
         speed = self.max_speed / (
             1.0 +
@@ -594,37 +758,32 @@ class TechnocratsController(Node):
             min(self.max_speed, speed)
         )
 
-        if front_distance is not None:
-
-            if front_distance <= self.front_stop_distance:
-                return 0.0
-
-            if front_distance < self.front_slow_distance:
-
-                scale = (
-                    front_distance - self.front_stop_distance
-                ) / (
-                    self.front_slow_distance -
-                    self.front_stop_distance
-                )
-
-                scale = max(0.0, min(1.0, scale))
-
-                speed *= scale
-
         return speed
+
+    # =========================================================
+    # PUBLISH DRIVE COMMAND
+    # =========================================================
 
     def publish_drive(self, speed, steering):
 
         msg = AckermannDriveStamped()
 
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = 'ego_racecar/base_link'
+        msg.header.stamp = (
+            self.get_clock().now().to_msg()
+        )
+
+        msg.header.frame_id = (
+            'ego_racecar/base_link'
+        )
 
         msg.drive.speed = float(speed)
         msg.drive.steering_angle = float(steering)
 
         self.drive_pub.publish(msg)
+
+    # =========================================================
+    # ODOMETRY CALLBACK
+    # =========================================================
 
     def odom_callback(self, msg):
 
@@ -637,71 +796,116 @@ class TechnocratsController(Node):
 
         velocity = msg.twist.twist.linear.x
 
+        # -----------------------------------------------------
+        # cie CONTROL
+        # -----------------------------------------------------
+
         (
-            steering,
+            cie_steering,
             curvature,
-            diagnostics
-        ) = self.sensor1_cie_controller(
-            x, y, yaw, velocity
+            cte,
+            heading_error,
+            cross_track_correction,
+            closest_index
+        ) = self.cie_controller(
+            x,
+            y,
+            yaw,
+            velocity
         )
 
-        front_distance = diagnostics['front_distance']
+        # -----------------------------------------------------
+        # LAP DETECTION
+        # -----------------------------------------------------
 
-        center_error = diagnostics['center_error']
+        self.check_lap_completion(
+            closest_index,
+            x,
+            y,
+            yaw
+        )
 
-        if center_error is None:
-            center_text = 'inactive'
+        # -----------------------------------------------------
+        # SPEED CONTROL
+        # -----------------------------------------------------
+
+        cie_speed = self.calculate_speed(curvature)
+
+        # -----------------------------------------------------
+        # sensor1 AVOIDANCE
+        # -----------------------------------------------------
+
+        (
+            avoidance_active,
+            avoidance_steering,
+            avoidance_speed,
+            avoidance_reason
+        ) = self.sensor1_avoidance()
+
+        # -----------------------------------------------------
+        # FINAL CONTROL SELECTION
+        # -----------------------------------------------------
+
+        if avoidance_active:
+
+            final_steering = avoidance_steering
+            final_speed = avoidance_speed
+
+            controller_mode = 'sensor1 AVOIDANCE'
+
         else:
-            center_text = f'{center_error:.3f} m'
 
-        left_distance = diagnostics['left_distance']
-        right_distance = diagnostics['right_distance']
+            final_steering = cie_steering
+            final_speed = cie_speed
 
-        left_text = (
-            f'{left_distance:.2f} m'
-            if left_distance is not None else 'unavailable'
+            controller_mode = 'PURE cie'
+
+        # -----------------------------------------------------
+        # PUBLISH DRIVE COMMAND
+        # -----------------------------------------------------
+
+        self.publish_drive(
+            final_speed,
+            final_steering
         )
 
-        right_text = (
-            f'{right_distance:.2f} m'
-            if right_distance is not None else 'unavailable'
-        )
-
-        front_text = (
-            f'{front_distance:.2f} m'
-            if front_distance is not None else 'unavailable'
-        )
-
-        speed = self.calculate_speed(
-            curvature,
-            front_distance
-        )
-
-        self.publish_drive(speed, steering)
-
-        diagnostic = (
-            f'Closest WP: {diagnostics["closest_index"]} | '
-            f'CTE: {diagnostics["cte"]:.3f} m | '
-            f'Path Steering: '
-            f'{math.degrees(diagnostics["waypoint_steering"]):.2f} deg | '
-            f'Sensor1 Correction: '
-            f'{math.degrees(diagnostics["sensor1_correction"]):.2f} deg | '
-            f'Left: {left_text} | '
-            f'Right: {right_text} | '
-            f'Center Error: {center_text} | '
-            f'Front: {front_text}'
-        )
+        # -----------------------------------------------------
+        # DIAGNOSTICS
+        # -----------------------------------------------------
 
         self.get_logger().info(
-            f'Controller: CIE_CONTROLLER | '
+
+            f'Lap: {self.current_lap} | '
+
+            f'Map: {os.path.basename(self.active_waypoint_file)} | '
+
+            f'Controller: {controller_mode} | '
+
             f'Position: ({x:.2f}, {y:.2f}) | '
-            f'Yaw: {math.degrees(yaw):.1f} deg | '
-            f'{diagnostic} | '
-            f'Steering: {math.degrees(steering):.2f} deg | '
-            f'Speed: {speed:.2f} m/s',
+
+            f'Yaw: {math.degrees(yaw):.2f} deg | '
+
+            f'Closest WP: {closest_index} | '
+
+            f'CTE: {cte:.3f} m | '
+
+            f'cie Steering: '
+            f'{math.degrees(cie_steering):.2f} deg | '
+
+            f'Final Steering: '
+            f'{math.degrees(final_steering):.2f} deg | '
+
+            f'Speed: {final_speed:.2f} m/s | '
+
+            f'{avoidance_reason}',
+
             throttle_duration_sec=1.0
         )
 
+
+# =============================================================
+# MAIN
+# =============================================================
 
 def main(args=None):
 
@@ -710,16 +914,23 @@ def main(args=None):
     node = TechnocratsController()
 
     try:
+
         rclpy.spin(node)
 
     except KeyboardInterrupt:
+
         pass
 
     finally:
+
         node.publish_drive(0.0, 0.0)
+
         node.destroy_node()
+
         rclpy.shutdown()
 
 
 if __name__ == '__main__':
+
     main()
+
