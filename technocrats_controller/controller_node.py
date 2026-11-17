@@ -7,6 +7,8 @@ import math
 import rclpy
 from rclpy.node import Node
 
+from ament_index_python.packages import get_package_share_directory
+
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
@@ -21,14 +23,21 @@ class TechnocratsController(Node):
         # PARAMETERS
         # =====================================================
 
+        # Resolve map files from the installed ROS 2 package share directory.
+        # This avoids depending on a specific user's home directory or workspace path.
+        package_share_dir = get_package_share_directory(
+            'technocrats_controller'
+        )
+        maps_dir = os.path.join(package_share_dir, 'maps')
+
         self.declare_parameter(
             'first_lap_file',
-            '~/controller_ws/src/technocrats_controller/maps/second_lap.csv'
+            os.path.join(maps_dir, 'second_lap.csv')
         )
 
         self.declare_parameter(
             'other_lap_file',
-            '~/controller_ws/src/technocrats_controller/maps/third_lap.csv'
+            os.path.join(maps_dir, 'third_lap.csv')
         )
 
         self.declare_parameter('wheelbase', 0.33)
@@ -44,7 +53,7 @@ class TechnocratsController(Node):
         )
 
         # Speed control
-        self.declare_parameter('max_speed', 1.0)
+        self.declare_parameter('max_speed', 5.5)
         self.declare_parameter('min_speed', 0.7)
         self.declare_parameter('curvature_speed_gain', 1.5)
 
@@ -62,7 +71,7 @@ class TechnocratsController(Node):
 
         self.declare_parameter('sensor1_topic', '/scan')
 
-        self.declare_parameter('avoidance_distance', 0.22)
+        self.declare_parameter('avoidance_distance', 0.2) #0.22
 
         self.declare_parameter(
             'avoidance_steering_angle',
@@ -145,11 +154,13 @@ class TechnocratsController(Node):
         # LAP MANAGEMENT
         # =====================================================
 
-        self.first_lap_file = os.path.expanduser(
+        # Parameter values are already absolute package-share paths by default.
+        # They can still be overridden through a ROS 2 parameter file or launch file.
+        self.first_lap_file = os.path.abspath(
             self.get_parameter('first_lap_file').value
         )
 
-        self.other_lap_file = os.path.expanduser(
+        self.other_lap_file = os.path.abspath(
             self.get_parameter('other_lap_file').value
         )
 
@@ -933,4 +944,6 @@ def main(args=None):
 if __name__ == '__main__':
 
     main()
+
+
 

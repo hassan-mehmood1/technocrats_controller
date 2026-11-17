@@ -114,7 +114,8 @@ source ~/controller_ws/install/setup.bash
 Run the controller:
 
 ```bash
-ros2 run technocrats_controller controller --ros-args -p max_speed:=6.0
+# ros2 run technocrats_controller controller --ros-args -p max_speed:=4.0
+ros2 run technocrats_controller controller
 ```
 
 ## 8. ROS 2 Topics
@@ -128,7 +129,7 @@ The controller interfaces with the simulator through the following topics:
 | `/drive`            | `ackermann_msgs/msg/AckermannDriveStamped` | Steering and speed commands                     |
 | `/map`              | `nav_msgs/msg/OccupancyGrid`               | Map information, if published by the simulation |
 
-## 9. Waypoint Map
+<!-- ## 9. Waypoint Map
 
 The controller uses the Levine track centerline waypoint file:
 
@@ -144,9 +145,9 @@ The default waypoint path in the current development workspace is:
 ~/controller_ws/src/technocrats_controller/maps/levine_centerline.csv
 ```
 
-If the package is installed in a different location, update the `waypoint_file` parameter accordingly.
+If the package is installed in a different location, update the `waypoint_file` parameter accordingly. -->
 
-## 10. Development Notes
+## 9. Development Notes
 
 - ROS 2 distribution: Jazzy
 - Controller package: `technocrats_controller`

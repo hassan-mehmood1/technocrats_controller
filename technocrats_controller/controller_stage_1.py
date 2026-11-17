@@ -11,6 +11,7 @@ from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
+from ament_index_python.packages import get_package_share_directory
 
 
 class TechnocratsController(Node):
@@ -18,9 +19,15 @@ class TechnocratsController(Node):
     def __init__(self):
         super().__init__('technocrats_controller')
 
+        package_share_dir = get_package_share_directory(
+            'technocrats_controller'
+        )
+
+        maps_dir = os.path.join(package_share_dir, 'maps')
+
         self.declare_parameter(
             'waypoint_file',
-            '~/controller_ws/src/technocrats_controller/maps/levine_centerline.csv'
+            os.path.join(maps_dir, 'levine_centerline.csv')
         )
 
         self.declare_parameter('wheelbase', 0.33)
@@ -135,7 +142,7 @@ class TechnocratsController(Node):
             self.get_parameter('search_backward').value
         )
 
-        waypoint_file = os.path.expanduser(
+        waypoint_file = os.path.abspath(
             self.get_parameter('waypoint_file').value
         )
 
